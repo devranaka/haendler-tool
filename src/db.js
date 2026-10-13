@@ -1,5 +1,5 @@
-const URL_ = import.meta.env.VITE_SUPABASE_URL || "https://jymsxauqoxlsueyvxdxn.supabase.co";
-const KEY = import.meta.env.VITE_SUPABASE_KEY || "sb_publishable_lAsHe2C7eJyTNCCkeo87VQ_rNIEx9Pe";
+const URL_ = import.meta.env.VITE_SUPABASE_URL || "https://iqlwrarrkgfvyhyfixir.supabase.co";
+const KEY = import.meta.env.VITE_SUPABASE_KEY || "sb_publishable_3eLx5S03jEGna-NExO5gVA_43XIAzZp";
 
 async function sb(path, { method = "GET", body, prefer = "return=representation" } = {}) {
   const res = await fetch(`${URL_}/rest/v1${path}`, {
