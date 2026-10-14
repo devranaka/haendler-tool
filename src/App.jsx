@@ -9,16 +9,18 @@ import {
 } from "./db.js";
 
 /* ---------- kleine UI-Bausteine ---------- */
-const C = { bg: "#f3f4f6", card: "#fff", line: "#e5e7eb", text: "#111827", mute: "#6b7280", soft: "#9ca3af", main: "#2563eb", mainBg: "#dbeafe" };
-const card = { background: C.card, border: `1.5px solid ${C.line}`, borderRadius: 14, padding: 16, marginBottom: 14 };
-const inputStyle = { width: "100%", background: "#fff", border: `1.5px solid ${C.line}`, borderRadius: 10, padding: "11px 12px", color: C.text, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
-const labelStyle = { fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5 };
-const h = { fontSize: 11, fontWeight: 700, color: C.soft, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 };
+const C = { bg: "#eef2f9", card: "#fff", line: "#e2e8f0", text: "#0f172a", mute: "#64748b", soft: "#94a3b8", main: "#2563eb", mainBg: "#dbeafe", navy: "#0f172a" };
+const PAGE_BG = "radial-gradient(1100px 420px at 85% -80px, rgba(99,102,241,0.18), transparent 60%), radial-gradient(900px 380px at -10% 140px, rgba(14,165,233,0.14), transparent 60%), #eef2f9";
+const SHADOW = "0 1px 2px rgba(15,23,42,0.05), 0 8px 24px rgba(15,23,42,0.07)";
+const card = { background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: SHADOW };
+const inputStyle = { width: "100%", background: "#fff", border: `1.5px solid ${C.line}`, borderRadius: 12, padding: "11px 12px", color: C.text, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
+const labelStyle = { fontSize: 12.5, fontWeight: 700, color: "#334155", display: "block", marginBottom: 5 };
+const h = { fontSize: 11, fontWeight: 800, color: C.mute, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 };
 const PURPLE = "linear-gradient(135deg,#7c3aed,#a855f7)";
 const btn = (primary = true, disabled = false) => ({
-  padding: "12px 14px", borderRadius: 11, cursor: disabled ? "default" : "pointer", fontWeight: 700, fontSize: 14,
-  border: primary ? "none" : `1.5px solid ${C.line}`, background: primary ? "linear-gradient(135deg,#2563eb,#3b82f6)" : "#fff",
-  color: primary ? "#fff" : C.mute, opacity: disabled ? 0.5 : 1,
+  padding: "12px 14px", borderRadius: 12, cursor: disabled ? "default" : "pointer", fontWeight: 700, fontSize: 14,
+  border: primary ? "none" : `1.5px solid ${C.line}`, background: primary ? "linear-gradient(135deg,#1d4ed8,#3b82f6)" : "#fff",
+  color: primary ? "#fff" : "#334155", opacity: disabled ? 0.5 : 1, boxShadow: primary && !disabled ? "0 4px 14px rgba(37,99,235,0.30)" : "none",
 });
 const STATUS = {
   KAUFEN: { bg: "#dcfce7", border: "#86efac", color: "#15803d", icon: "✅", title: "KAUFEN" },
@@ -26,13 +28,27 @@ const STATUS = {
   FINGER_WEG: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c", icon: "🛑", title: "FINGER WEG" },
 };
 const GRAY = { bg: "#f3f4f6", border: "#d1d5db", color: "#4b5563", icon: "ℹ️" };
-const BEW = { Attraktiv: ["#dcfce7", "#15803d"], Prüfen: ["#fef3c7", "#b45309"], Meiden: ["#fee2e2", "#b91c1c"], "–": ["#f3f4f6", "#6b7280"] };
+const BEW = { Attraktiv: ["#dcfce7", "#15803d"], Prüfen: ["#fef3c7", "#b45309"], Meiden: ["#fee2e2", "#b91c1c"], "–": ["#f1f5f9", "#64748b"] };
+const BEW_ACCENT = { Attraktiv: "#22c55e", Prüfen: "#f59e0b", Meiden: "#ef4444", "–": "#cbd5e1" };
 const r0 = (n) => (n === null || n === undefined || isNaN(n) ? null : Math.round(n));
 
-function Field({ label, children, hint }) {
+function Info({ text }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-block", marginLeft: 6, verticalAlign: "middle" }}
+      onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" aria-label="Erklärung" onClick={(e) => { e.preventDefault(); setOpen((o) => !o); }}
+        style={{ width: 18, height: 18, borderRadius: 9, border: "none", background: open ? C.main : "#dbeafe", color: open ? "#fff" : C.main, fontSize: 11, fontWeight: 800, cursor: "pointer", padding: 0, lineHeight: "18px", fontStyle: "italic", fontFamily: "Georgia,serif" }}>i</button>
+      {open && (
+        <span style={{ position: "absolute", zIndex: 20, left: -8, top: 24, width: 262, maxWidth: "72vw", background: "#0f172a", color: "#f1f5f9", borderRadius: 12, padding: "11px 13px", fontSize: 12.5, lineHeight: 1.5, fontWeight: 400, fontStyle: "normal", boxShadow: "0 10px 30px rgba(15,23,42,0.35)", whiteSpace: "pre-line", textAlign: "left", letterSpacing: 0, textTransform: "none" }}>{text}</span>
+      )}
+    </span>
+  );
+}
+function Field({ label, children, hint, info }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={labelStyle}>{label}</label>
+      <label style={labelStyle}>{label}{info && <Info text={info} />}</label>
       {children}
       {hint && <div style={{ fontSize: 11, color: C.soft, marginTop: 4 }}>{hint}</div>}
     </div>
@@ -53,7 +69,7 @@ function Num({ value, onChange, pct, step, placeholder, style }) {
 }
 function Row({ k, v, bold, color }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "7px 0", borderBottom: `1px solid #f3f4f6`, fontSize: 14 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "7px 0", borderBottom: `1px solid #f1f5f9`, fontSize: 14 }}>
       <span style={{ color: C.mute }}>{k}</span>
       <span style={{ fontWeight: bold ? 800 : 600, color: color || C.text, textAlign: "right" }}>{v}</span>
     </div>
@@ -234,13 +250,19 @@ export default function App() {
 
   const tabs = [["deal", "Deal-Check"], ["markt", `Markt (${folders.length})`], ["inserate", `Inserate (${inserate.length})`], ["settings", "Einstellungen"]];
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
-      <div style={{ background: "#fff", borderBottom: `1.5px solid ${C.line}`, position: "sticky", top: 0, zIndex: 5 }}>
-        <div style={{ maxWidth: 560, margin: "0 auto", padding: "0 12px" }}>
-          <div style={{ padding: "14px 4px 8px", fontSize: 20, fontWeight: 800 }}>🚗 Auto Deal-Check</div>
-          <div style={{ display: "flex", overflowX: "auto" }}>
+    <div style={{ minHeight: "100vh", background: PAGE_BG, color: C.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
+      <div style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e3a8a 55%,#4338ca 100%)", position: "sticky", top: 0, zIndex: 5, boxShadow: "0 6px 20px rgba(15,23,42,0.25)" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", padding: "0 12px 10px" }}>
+          <div style={{ padding: "16px 4px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 11, background: "rgba(255,255,255,0.14)", display: "grid", placeItems: "center", fontSize: 20 }}>🚗</div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: -0.2 }}>Auto Deal-Check</div>
+              <div style={{ fontSize: 11.5, color: "#c7d2fe" }}>Kaufen, verhandeln, verkaufen – mit Plan</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", background: "rgba(255,255,255,0.10)", borderRadius: 14, padding: 4 }}>
             {tabs.map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} style={{ flex: "1 0 auto", padding: "10px 12px", background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap", fontSize: 13, fontWeight: tab === k ? 800 : 500, color: tab === k ? C.main : C.mute, borderBottom: `2.5px solid ${tab === k ? C.main : "transparent"}` }}>{l}</button>
+              <button key={k} onClick={() => setTab(k)} style={{ flex: "1 0 auto", padding: "9px 12px", border: "none", cursor: "pointer", whiteSpace: "nowrap", fontSize: 13, fontWeight: tab === k ? 800 : 600, borderRadius: 11, background: tab === k ? "#fff" : "transparent", color: tab === k ? "#1e3a8a" : "#e0e7ff", boxShadow: tab === k ? "0 2px 8px rgba(0,0,0,0.18)" : "none" }}>{l}</button>
             ))}
           </div>
         </div>
@@ -320,9 +342,9 @@ function DealTab({ settings, folders, code, setError, goto }) {
         <Field label="Angebotspreis des Verkäufers (€)"><Num value={f.preis} onChange={(v) => setF({ ...f, preis: v })} placeholder="3900" /></Field>
       </div>
 
-      <div style={{ ...card, background: st.bg, borderColor: st.border }}>
+      <div style={{ ...card, background: `linear-gradient(135deg,${st.bg},#fff 140%)`, borderColor: st.border, borderWidth: 2, padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <span style={{ fontSize: 30 }}>{st.icon}</span>
+          <span style={{ fontSize: 34 }}>{st.icon}</span>
           <div style={{ fontSize: STATUS[r.status] ? 28 : 16, fontWeight: 900, color: st.color }}>{STATUS[r.status] ? st.title : "Noch kein Ergebnis"}</div>
         </div>
         <div style={{ fontSize: 15, color: st.color, fontWeight: 600, lineHeight: 1.45 }}>{r.headline}</div>
@@ -459,6 +481,7 @@ function FolderView({ folder, settings, setSettings, setInserate, actions, code,
   const [busy2, setBusy2] = useState(false);
   const [pickNote, setPickNote] = useState("");
   const [cands, setCands] = useState([]);
+  const [openGroup, setOpenGroup] = useState(null);
 
   const act = folder.active;
   const prices = act.map((i) => Number(i.preis)).filter(Number.isFinite);
@@ -551,24 +574,64 @@ function FolderView({ folder, settings, setSettings, setInserate, actions, code,
       </div>
 
       {active.length === 0 && <div style={card}><div style={{ fontSize: 13, color: C.mute }}>Noch keine Gruppe mit Inseraten. Passe die Gruppen unten an oder lies mehr Inserate ein.</div></div>}
+      {active.length > 0 && <div style={{ fontSize: 12, color: C.mute, margin: "2px 4px 10px" }}>Tippe auf eine Gruppe, um die zugehörigen Inserate zu sehen.</div>}
       {active.map((e) => {
         const [bg, fg] = BEW[e.bewertung] || BEW["–"];
+        const isOpen = openGroup === e.group.id;
+        const items = act.filter((i) => findGroup(i.baujahr, i.km, [e.group])).sort((x, y) => Number(x.preis) - Number(y.preis));
+        const counted = Math.max(1, Math.ceil(items.length * settings.anteil));
         return (
-          <div key={e.group.id} style={card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{e.label}</div>
-              <span style={{ background: bg, color: fg, borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 800 }}>{e.bewertung}</span>
-            </div>
-            <Row k="Inserate" v={`${e.n}${e.datenbasis === "zu dünn" ? " (zu dünn)" : ""}`} color={e.datenbasis === "zu dünn" ? "#b45309" : undefined} />
-            <Row k="Marktpreis" v={eur(e.markt)} />
-            <Row k="Realistischer Verkaufspreis" v={eur(e.vk)} />
-            <Row k="MAX. EINKAUFSPREIS" v={eur(e.maxEK)} bold color={e.maxEK > 0 ? "#15803d" : "#b91c1c"} />
-            <Row k="Tempo" v={e.tempo + (e.tageAvg ? ` (Ø ${Math.round(e.tageAvg)} Tage)` : "")} />
-            <Row k="Preisstabilität" v={e.stabilitaet} />
-            <Row k="Preisspanne" v={`${eur(e.min)} – ${eur(e.max)}`} />
+          <div key={e.group.id} style={{ ...card, padding: 0, overflow: "hidden", borderColor: isOpen ? BEW_ACCENT[e.bewertung] || C.line : C.line }}>
+            <button onClick={() => setOpenGroup(isOpen ? null : e.group.id)} style={{ display: "block", width: "100%", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer", background: "none", border: "none", borderLeft: `6px solid ${BEW_ACCENT[e.bewertung] || "#cbd5e1"}`, padding: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{e.label}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ background: bg, color: fg, borderRadius: 999, padding: "4px 11px", fontSize: 12, fontWeight: 800 }}>{e.bewertung}</span>
+                  <span style={{ color: C.soft, fontSize: 13, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</span>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <div style={{ background: e.maxEK > 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 12, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: C.mute }}>MAX. EINKAUF</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: e.maxEK > 0 ? "#15803d" : "#b91c1c" }}>{eur(e.maxEK)}</div>
+                </div>
+                <div style={{ background: "#eff6ff", borderRadius: 12, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, color: C.mute }}>VERKAUF</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#1d4ed8" }}>{eur(e.vk)}</div>
+                </div>
+              </div>
+              <Row k="Inserate" v={`${e.n}${e.datenbasis === "zu dünn" ? " (zu dünn)" : ""}`} color={e.datenbasis === "zu dünn" ? "#b45309" : undefined} />
+              <Row k="Marktpreis" v={eur(e.markt)} />
+              <Row k="Tempo" v={e.tempo + (e.tageAvg ? ` (Ø ${Math.round(e.tageAvg)} Tage)` : "")} />
+              <Row k="Preisstabilität" v={e.stabilitaet} />
+              <Row k="Preisspanne" v={`${eur(e.min)} – ${eur(e.max)}`} />
+            </button>
+            {isOpen && (
+              <div style={{ background: "#f8fafc", borderTop: `1px solid ${C.line}`, padding: "12px 16px 8px" }}>
+                <div style={{ fontSize: 12, color: C.mute, marginBottom: 6, lineHeight: 1.45 }}>
+                  {items.length} Inserate in dieser Gruppe, nach Preis sortiert. Die {counted} günstigsten (⭐) bestimmen den Marktpreis.
+                </div>
+                {items.map((i, idx) => (
+                  <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 18, fontSize: 13, textAlign: "center" }}>{idx < counted ? "⭐" : ""}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}><InseratRow i={i} actions={actions} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
+      {unassigned > 0 && (
+        <button onClick={() => setOpenGroup(openGroup === "none" ? null : "none")} style={{ ...card, display: "block", width: "100%", textAlign: "left", font: "inherit", cursor: "pointer", background: "#fffbeb", borderColor: "#fde68a" }}>
+          <b style={{ fontSize: 14, color: "#92400e" }}>{unassigned} Inserate ohne Gruppe</b> <span style={{ fontSize: 12, color: "#92400e" }}>{openGroup === "none" ? "▼" : "▶ antippen"}</span>
+        </button>
+      )}
+      {openGroup === "none" && (
+        <div style={card}>
+          {act.filter((i) => !findGroup(i.baujahr, i.km, folder.groups)).map((i) => <InseratRow key={i.id} i={i} actions={actions} />)}
+        </div>
+      )}
 
       {/* Gruppen */}
       <details style={card}>
@@ -800,6 +863,13 @@ function InserateTab({ inserate, setInserate, actions, code, saveCode, setError 
 }
 
 /* ---------- Einstellungen ---------- */
+const KOSTEN_INFO = {
+  aufbereitung: "Innen- und Außenreinigung, Politur, Fotos – alles, was das Auto verkaufsfertig macht.\nBeispiel: 150 € → werden von jedem Verkaufspreis als Kosten abgezogen.",
+  tuev: "Kosten für TÜV/HU und kleine Reparaturen, die fast immer anfallen.\nBeispiel: 300 € → die Obergrenze für den Einkauf sinkt um 300 €.",
+  inserat: "Gebühren für die Anzeige auf der Verkaufsplattform.\nBeispiel: 30 €.",
+  gewaehrleistung: "Rücklage für Nachbesserungen, falls der Käufer später einen Mangel meldet.\nBeispiel: 200 € pro Auto – lieber zu hoch als zu niedrig ansetzen.",
+  sonstiges: "Alles Übrige: Transport, Zulassung, Überführungskennzeichen, Sprit für Besichtigungen.\nBeispiel: 100 €.",
+};
 function SettingsTab({ settings: s, setSettings }) {
   const set = (k, v) => setSettings({ ...s, [k]: v });
   const setK = (k, v) => setSettings({ ...s, kosten: { ...s.kosten, [k]: v === "" ? 0 : v } });
@@ -816,37 +886,37 @@ function SettingsTab({ settings: s, setSettings }) {
 
       <div style={card}>
         <div style={h}>Nachrichten an Verkäufer</div>
-        <Field label="Dein Name oder deine Firma (als Unterschrift)"><input style={inputStyle} value={s.absender} onChange={(e) => set("absender", e.target.value)} placeholder="z. B. Max Mustermann" /></Field>
+        <Field info={"Wird als Unterschrift unter die Nachrichten an Verkäufer gesetzt.\nBeispiel: „Max Mustermann“ → die Nachricht endet mit „Viele Grüße, Max Mustermann“."} label="Dein Name oder deine Firma (als Unterschrift)"><input style={inputStyle} value={s.absender} onChange={(e) => set("absender", e.target.value)} placeholder="z. B. Max Mustermann" /></Field>
       </div>
 
       <div style={card}>
         <div style={h}>Marktpreis-Berechnung</div>
-        <Field label="Verhandlungsabschlag auf Angebotspreise (%)" hint="Angebotspreise liegen meist über dem echten Verkaufspreis."><Num pct value={s.abschlag} onChange={(v) => set("abschlag", v)} /></Field>
-        <Field label="Anteil günstigster Inserate für den Marktpreis (%)" hint="Nur die günstigsten x % einer Gruppe bestimmen den Marktpreis. Mondpreise ziehen den Schnitt sonst hoch."><Num pct value={s.anteil} onChange={(v) => set("anteil", v)} /></Field>
-        <Field label="Mindestanzahl Inserate pro Gruppe"><Num value={s.minInserate} onChange={(v) => set("minInserate", v)} /></Field>
+        <Field info={"Inserate stehen meist teurer drin, als das Auto am Ende wirklich verkauft wird. Dieser Abschlag zieht das vom Marktpreis ab.\nBeispiel: Marktpreis 4.000 €, Abschlag 7 % → du rechnest mit einem Verkaufspreis von 3.720 €.\nHöher = vorsichtiger, du zahlst beim Einkauf weniger. Niedriger = optimistischer."} label="Verhandlungsabschlag auf Angebotspreise (%)" hint="Angebotspreise liegen meist über dem echten Verkaufspreis."><Num pct value={s.abschlag} onChange={(v) => set("abschlag", v)} /></Field>
+        <Field info={"Nur die günstigsten Inserate einer Gruppe bestimmen den Marktpreis. Teure Mondpreise sollen den Schnitt nicht hochziehen.\nBeispiel: 10 Inserate, 40 % → die 4 günstigsten werden gemittelt.\nKleinerer Wert = vorsichtiger (niedrigerer Marktpreis)."} label="Anteil günstigster Inserate für den Marktpreis (%)" hint="Nur die günstigsten x % einer Gruppe bestimmen den Marktpreis. Mondpreise ziehen den Schnitt sonst hoch."><Num pct value={s.anteil} onChange={(v) => set("anteil", v)} /></Field>
+        <Field info={"So viele Inserate braucht eine Gruppe mindestens, damit die Zahlen als verlässlich gelten.\nBeispiel: 5 → eine Gruppe mit nur 3 Inseraten wird als „zu dünn“ markiert und nicht als Attraktiv bewertet."} label="Mindestanzahl Inserate pro Gruppe"><Num value={s.minInserate} onChange={(v) => set("minInserate", v)} /></Field>
       </div>
 
       <div style={card}>
         <div style={h}>Kosten pro Fahrzeug</div>
         {[["aufbereitung", "Aufbereitung"], ["tuev", "TÜV/HU und Kleinreparaturen"], ["inserat", "Inseratskosten"], ["gewaehrleistung", "Gewährleistungsrücklage"], ["sonstiges", "Sonstiges (Transport, Zulassung)"]].map(([k, l]) => (
-          <Field key={k} label={`${l} (€)`}><Num value={s.kosten[k]} onChange={(v) => setK(k, v)} /></Field>
+          <Field key={k} info={KOSTEN_INFO[k]} label={`${l} (€)`}><Num value={s.kosten[k]} onChange={(v) => setK(k, v)} /></Field>
         ))}
         <Row k="Summe Kosten pro Auto" v={eur(sumKosten(s))} bold />
         <div style={{ height: 12 }} />
-        <Field label="Wunschgewinn pro Auto (€)"><Num value={s.wunschgewinn} onChange={(v) => set("wunschgewinn", v)} /></Field>
+        <Field info={"Der Gewinn, den du mit jedem Auto mindestens machen willst. Er wird beim höchsten Einkaufspreis schon abgezogen.\nBeispiel: Verkauf 3.720 €, Kosten 780 €, Wunschgewinn 500 € → du darfst höchstens 2.440 € zahlen.\nJe höher der Wunsch, desto niedriger die Obergrenze."} label="Wunschgewinn pro Auto (€)"><Num value={s.wunschgewinn} onChange={(v) => set("wunschgewinn", v)} /></Field>
       </div>
 
       <div style={card}>
         <div style={h}>Ampel und Bewertung</div>
-        <Field label="Deal-Check: Verhandlungsspielraum (%)" hint="Angebote bis x % über dem Max-Einkaufspreis = VERHANDELN, darüber = FINGER WEG."><Num pct value={s.spielraum} onChange={(v) => set("spielraum", v)} /></Field>
-        <Field label="Erstes Angebot: Abschlag auf die Obergrenze (%)"><Num pct value={s.startabschlag} onChange={(v) => set("startabschlag", v)} /></Field>
+        <Field info={"Wie weit ein Angebot über deiner Obergrenze liegen darf, bis es nicht mehr zu retten ist.\nBeispiel: Obergrenze 2.440 €, Spielraum 10 % → bis 2.684 € zeigt die Ampel „VERHANDELN“, darüber „FINGER WEG“."} label="Deal-Check: Verhandlungsspielraum (%)" hint="Angebote bis x % über dem Max-Einkaufspreis = VERHANDELN, darüber = FINGER WEG."><Num pct value={s.spielraum} onChange={(v) => set("spielraum", v)} /></Field>
+        <Field info={"Dein erstes Angebot liegt so viel unter deiner Obergrenze, damit du im Gespräch noch nachgeben kannst.\nBeispiel: Obergrenze 2.440 €, Abschlag 8 % → erstes Angebot ca. 2.250 €.\nGrößer = mutigeres Angebot, aber der Verkäufer springt eher ab."} label="Erstes Angebot: Abschlag auf die Obergrenze (%)"><Num pct value={s.startabschlag} onChange={(v) => set("startabschlag", v)} /></Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <Field label="Tempo schnell bis (Tage)"><Num value={s.tempoSchnell} onChange={(v) => set("tempoSchnell", v)} /></Field>
-          <Field label="Tempo mittel bis (Tage)"><Num value={s.tempoMittel} onChange={(v) => set("tempoMittel", v)} /></Field>
-          <Field label="Preis stabil bis (Streuung %)"><Num pct value={s.stabil} onChange={(v) => set("stabil", v)} /></Field>
-          <Field label="Preis mittel bis (Streuung %)"><Num pct value={s.stabilMittel} onChange={(v) => set("stabilMittel", v)} /></Field>
-          <Field label="'Attraktiv' ab Punkten (von 6)"><Num value={s.punkteAttraktiv} onChange={(v) => set("punkteAttraktiv", v)} /></Field>
-          <Field label="'Prüfen' ab Punkten"><Num value={s.punktePruefen} onChange={(v) => set("punktePruefen", v)} /></Field>
+          <Field info={"Steht ein Inserat im Schnitt höchstens so viele Tage online, gilt die Gruppe als schnell verkäuflich (mehr Punkte).\nBeispiel: 21 → Ø 15 Tage online = schnell."} label="Tempo schnell bis (Tage)"><Num value={s.tempoSchnell} onChange={(v) => set("tempoSchnell", v)} /></Field>
+          <Field info={"Bis zu dieser Tageszahl gilt das Tempo als „mittel“. Darüber ist es „langsam“.\nBeispiel: 45 → Ø 30 Tage = mittel, Ø 60 Tage = langsam."} label="Tempo mittel bis (Tage)"><Num value={s.tempoMittel} onChange={(v) => set("tempoMittel", v)} /></Field>
+          <Field info={"Misst, wie weit die Preise einer Gruppe auseinanderliegen ((teuerstes − günstigstes) ÷ Durchschnitt). Bis zu diesem Wert gilt der Preis als stabil.\nBeispiel: 30 % → bei Ø 4.000 € darf die Spanne bis ca. 1.200 € gehen."} label="Preis stabil bis (Streuung %)"><Num pct value={s.stabil} onChange={(v) => set("stabil", v)} /></Field>
+          <Field info={"Bis zu diesem Wert gilt die Streuung als „mittel“, darüber als „unsicher“.\nBeispiel: 60 % → Spanne bis ca. 2.400 € bei Ø 4.000 €."} label="Preis mittel bis (Streuung %)"><Num pct value={s.stabilMittel} onChange={(v) => set("stabilMittel", v)} /></Field>
+          <Field info={"Jede Gruppe bekommt 0 bis 6 Punkte (Tempo, Preisstabilität, Datenbasis). Ab dieser Punktzahl heißt die Bewertung „Attraktiv“.\nBeispiel: 5 → Gruppe mit 5 oder 6 Punkten ist Attraktiv."} label="'Attraktiv' ab Punkten (von 6)"><Num value={s.punkteAttraktiv} onChange={(v) => set("punkteAttraktiv", v)} /></Field>
+          <Field info={"Ab dieser Punktzahl heißt die Bewertung „Prüfen“, darunter „Meiden“.\nBeispiel: 3 → 3 oder 4 Punkte = Prüfen, 0 bis 2 Punkte = Meiden."} label="'Prüfen' ab Punkten"><Num value={s.punktePruefen} onChange={(v) => set("punktePruefen", v)} /></Field>
         </div>
       </div>
 
