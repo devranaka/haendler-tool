@@ -21,11 +21,9 @@ export const DEFAULT_SETTINGS = {
   punktePruefen: 3,
   spielraum: 0.1,          // Verhandeln bis x % über Max-EK
   startabschlag: 0.08,     // Erstes Angebot = Max-EK minus x %
-  groups: [
-    { id: 1, bjVon: 2010, bjBis: 2012, kmVon: 50000, kmBis: 70000 },
-    { id: 2, bjVon: 2010, bjBis: 2012, kmVon: 100000, kmBis: 115000 },
-    { id: 3, bjVon: 2015, bjBis: 2017, kmVon: 60000, kmBis: 70000 },
-  ],
+  groups: [],              // alt: globale Gruppen, wird nicht mehr verwendet
+  modelGroups: {},         // Gruppen je Modell-Ordner: { "citroen c1": [ {id,bjVon,bjBis,kmVon,kmBis} ] }
+  absender: "",            // Name/Firma für die Nachrichten an Verkäufer
   massnahmen: [
     { id: "m1", name: "TÜV/HU neu machen", kosten: 120, effekt: 400 },
     { id: "m2", name: "Inspektion und Ölwechsel", kosten: 150, effekt: 200 },
@@ -54,7 +52,7 @@ export const DEFAULT_SETTINGS = {
 export function mergeSettings(saved) {
   if (!saved) return structuredClone(DEFAULT_SETTINGS);
   const d = structuredClone(DEFAULT_SETTINGS);
-  return { ...d, ...saved, kosten: { ...d.kosten, ...(saved.kosten || {}) } };
+  return { ...d, ...saved, kosten: { ...d.kosten, ...(saved.kosten || {}) }, modelGroups: saved.modelGroups || {}, absender: saved.absender || "" };
 }
 
 export const sumKosten = (s) => Object.values(s.kosten).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -72,26 +70,30 @@ export function findGroup(bj, km, groups) {
   return groups.find((g) => g.bjVon <= bj && g.bjBis >= bj && g.kmVon <= km && g.kmBis >= km) || null;
 }
 
-// Gruppen aus den Daten vorschlagen: 3-Jahres-Baujahr-Bänder x 30.000-km-Bänder
-export function suggestGroups(inserate, minCount = 3) {
-  const valid = inserate.filter((i) => !i.ausschliessen && num(i.baujahr) && num(i.km) && num(i.preis));
-  const map = new Map();
-  valid.forEach((i) => {
-    const bj0 = Math.floor((i.baujahr - 2000) / 3) * 3 + 2000;
-    const km0 = Math.floor(i.km / 30000) * 30000;
-    const k = `${bj0}|${km0}`;
-    map.set(k, (map.get(k) || 0) + 1);
-  });
-  const out = [];
-  [...map.entries()]
-    .filter(([, c]) => c >= minCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .forEach(([k], idx) => {
-      const [bj0, km0] = k.split("|").map(Number);
-      out.push({ id: idx + 1, bjVon: bj0, bjBis: bj0 + 2, kmVon: km0, kmBis: km0 + 29999 });
+// Gruppen aus den Daten bilden. Probiert drei Rastergrößen (3 J./30.000 km, 4 J./40.000 km,
+// 5 J./50.000 km) und nimmt die feinste, bei der die 10 größten Gruppen mindestens 70 % der
+// Inserate abdecken. Sonst die Raster-Größe mit der besten Abdeckung.
+export function suggestGroups(inserate, maxGroups = 10) {
+  const valid = inserate.filter((i) => !i.ausschliessen && num(i.baujahr) !== null && num(i.km) !== null && num(i.preis) !== null);
+  if (!valid.length) return [];
+  let best = null;
+  for (const [by, kb] of [[3, 30000], [4, 40000], [5, 50000]]) {
+    const map = new Map();
+    valid.forEach((i) => {
+      const bj0 = Math.floor((i.baujahr - 2000) / by) * by + 2000;
+      const km0 = Math.floor(i.km / kb) * kb;
+      const k = `${bj0}|${km0}`;
+      map.set(k, (map.get(k) || 0) + 1);
     });
-  return out;
+    const top = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxGroups);
+    const covered = top.reduce((a, [, c]) => a + c, 0) / valid.length;
+    if (!best || covered > best.covered) best = { by, kb, top, covered };
+    if (covered >= 0.7) { best = { by, kb, top, covered }; break; }
+  }
+  return best.top
+    .map(([k]) => k.split("|").map(Number))
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    .map(([bj0, km0], idx) => ({ id: idx + 1, bjVon: bj0, bjBis: bj0 + best.by - 1, kmVon: km0, kmBis: km0 + best.kb - 1 }));
 }
 
 export function evaluateGroups(inserate, s) {
@@ -184,4 +186,80 @@ export function dealCheck({ bj, km, preis, massnahmen = [], zustand = [] }, eval
 export function eur(n) {
   if (n === null || n === undefined || isNaN(n)) return "–";
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Math.round(n));
+}
+
+/* ---------- Ordner je Fahrzeugmodell ---------- */
+
+export const norm = (s) =>
+  (s || "").toString().normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// Ordner eines Inserats: Marke + Baureihe, bei älteren Inseraten aus den ersten zwei Wörtern der Bezeichnung
+export function folderInfo(i) {
+  let marke = (i.marke || "").trim();
+  let reihe = (i.baureihe || "").trim();
+  if (!marke && !reihe) {
+    const t = (i.modell || "").trim().split(/\s+/).filter(Boolean);
+    if (t.length) { marke = t[0]; reihe = t[1] || ""; }
+  }
+  const label = [marke, reihe].filter(Boolean).join(" ") || "Ohne Modell";
+  return { key: norm(label) || "ohne-modell", label };
+}
+
+export function buildFolders(inserate, settings) {
+  const map = new Map();
+  inserate.forEach((i) => {
+    const { key, label } = folderInfo(i);
+    if (!map.has(key)) map.set(key, { key, labels: {}, items: [] });
+    const f = map.get(key);
+    f.labels[label] = (f.labels[label] || 0) + 1;
+    f.items.push(i);
+  });
+  return [...map.values()]
+    .map((f) => {
+      const label = Object.entries(f.labels).sort((a, b) => b[1] - a[1])[0][0];
+      const saved = settings.modelGroups?.[f.key];
+      const auto = !(saved && saved.length);
+      const groups = auto ? suggestGroups(f.items) : saved;
+      const evals = evaluateGroups(f.items, { ...settings, groups });
+      const active = f.items.filter((i) => !i.ausschliessen);
+      const best = [...evals].filter((e) => !e.empty).sort((a, b) => b.punkte - a.punkte || b.maxEK - a.maxEK)[0] || null;
+      return { key: f.key, label, items: f.items, active, groups, auto, evals, best, n: f.items.length };
+    })
+    .sort((a, b) => b.n - a.n);
+}
+
+const rnd = (n) => (n === null || n === undefined || isNaN(n) ? null : Math.round(n));
+
+// Vorauswahl für den Berater: Inserate, bei denen mit realistischem Verhandeln (erstes Angebot
+// höchstens ca. 28 % unter dem Angebotspreis) ein Gewinn möglich ist.
+// Sortiert nach Einstufung (im Budget, verhandelbar, nur mit deutlichem Nachlass),
+// dann nach Bewertung der Gruppe, dann nach erwartetem Gewinn.
+export function topCandidates(folder, s, max = 12) {
+  const rankB = { Attraktiv: 0, Prüfen: 1, Meiden: 2 };
+  const out = [];
+  folder.items.forEach((i) => {
+    if (i.ausschliessen) return;
+    const g = findGroup(i.baujahr, i.km, folder.groups);
+    if (!g) return;
+    const ev = folder.evals.find((e) => e.group.id === g.id);
+    if (!ev || ev.empty || ev.maxEK === undefined || !(ev.maxEK > 0)) return;
+    const preis = Number(i.preis);
+    if (!(preis > 0)) return;
+    const erst = Math.max(0, floor50(Math.min(ev.maxEK * (1 - s.startabschlag), preis * 0.93)));
+    if (erst < preis * 0.72) return; // wäre ein unrealistisch niedriges Angebot
+    const gewinn = ev.vk - ev.kosten - preis;
+    const einstufung = preis <= ev.maxEK ? "im Budget" : preis <= ev.maxEK * (1 + s.spielraum) ? "verhandelbar" : "nur mit deutlichem Nachlass";
+    out.push({
+      id: i.id, modell: i.modell || folder.label, baujahr: i.baujahr, km: i.km, preis,
+      anbieter: i.anbieter || null, tageOnline: i.tage ?? null,
+      gruppe: ev.label, gruppenBewertung: ev.bewertung, datenbasis: ev.datenbasis, tempo: ev.tempo, preisstabilitaet: ev.stabilitaet,
+      einstufung, maxEinkaufGruppe: rnd(ev.maxEK), erwarteterGewinnBeiAngebotspreis: rnd(gewinn), abstandZumMax: rnd(preis - ev.maxEK),
+      noetigerNachlassProzent: Math.max(0, Math.round((1 - ev.maxEK / preis) * 100)),
+      ersteresAngebot: erst,
+      _s: einstufung === "im Budget" ? 0 : einstufung === "verhandelbar" ? 1 : 2,
+      _rank: rankB[ev.bewertung] ?? 2, _gewinn: gewinn,
+    });
+  });
+  out.sort((a, b) => a._s - b._s || a._rank - b._rank || b._gewinn - a._gewinn);
+  return out.slice(0, max).map(({ _s, _rank, _gewinn, ...rest }) => rest);
 }
