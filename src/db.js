@@ -19,11 +19,13 @@ async function sb(path, { method = "GET", body, prefer = "return=representation"
 
 const toLocal = (r) => ({
   id: r.id, erfasst: r.erfasst, quelle: r.quelle || "", modell: r.modell || "",
+  marke: r.marke || "", baureihe: r.baureihe || "",
   baujahr: r.baujahr, km: r.km, preis: r.preis, anbieter: r.anbieter || "",
   tage: r.tage, notiz: r.notiz || "", ausschliessen: !!r.ausschliessen,
 });
 const toRow = (i) => ({
   quelle: i.quelle || null, modell: i.modell || null,
+  marke: (i.marke || "").trim() || null, baureihe: (i.baureihe || "").trim() || null,
   baujahr: i.baujahr === "" || i.baujahr == null ? null : Number(i.baujahr),
   km: i.km === "" || i.km == null ? null : Number(i.km),
   preis: i.preis === "" || i.preis == null ? null : Number(i.preis),
@@ -38,6 +40,8 @@ export const insertInserate = async (list) =>
   list.length ? (await sb("/haendler_inserate", { method: "POST", body: list.map(toRow) })).map(toLocal) : [];
 export const patchInserat = (id, patch) =>
   sb(`/haendler_inserate?id=eq.${id}`, { method: "PATCH", body: patch, prefer: "return=minimal" });
+export const patchMany = (ids, patch) =>
+  ids.length ? sb(`/haendler_inserate?id=in.(${ids.join(",")})`, { method: "PATCH", body: patch, prefer: "return=minimal" }) : Promise.resolve();
 export const deleteInserat = (id) => sb(`/haendler_inserate?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" });
 export const deleteAllInserate = () => sb("/haendler_inserate?id=gt.0", { method: "DELETE", prefer: "return=minimal" });
 
@@ -62,6 +66,27 @@ export async function analyzeImages(images, code) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Analyse fehlgeschlagen (${res.status})`);
   return data.listings || [];
+}
+
+async function callBerater(body, code) {
+  const res = await fetch("/api/berater", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-app-code": code || "" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Berater fehlgeschlagen (${res.status})`);
+  return data;
+}
+
+// Text-Einschätzung (Markt erklären oder Deal beraten)
+export async function askBerater(context, question, code) {
+  return (await callBerater({ mode: "text", context, question }, code)).text || "";
+}
+
+// Die 5 besten Fahrzeuge aus den Kandidaten, mit Stichwörtern und Nachrichten an den Verkäufer
+export async function askTop5(context, code) {
+  return (await callBerater({ mode: "top5", context }, code)).picks || [];
 }
 
 export function fileToDataUrl(file, maxW = 1100, quality = 0.72) {
