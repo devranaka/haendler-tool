@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS = {
   spielraum: 0.1,          // Verhandeln bis x % über Max-EK
   startabschlag: 0.08,     // Erstes Angebot = Max-EK minus x %
   groups: [],              // alt: globale Gruppen, wird nicht mehr verwendet
+  modelSettings: {},       // Kosten, Wunschgewinn, Maßnahmen, Zustand je Modell-Ordner: { "citroen c1": {kosten, wunschgewinn, massnahmen, zustand} }
   modelGroups: {},         // Gruppen je Modell-Ordner: { "citroen c1": [ {id,bjVon,bjBis,kmVon,kmBis} ] }
   absender: "",            // Name/Firma für die Nachrichten an Verkäufer
   massnahmen: [
@@ -52,7 +53,20 @@ export const DEFAULT_SETTINGS = {
 export function mergeSettings(saved) {
   if (!saved) return structuredClone(DEFAULT_SETTINGS);
   const d = structuredClone(DEFAULT_SETTINGS);
-  return { ...d, ...saved, kosten: { ...d.kosten, ...(saved.kosten || {}) }, modelGroups: saved.modelGroups || {}, absender: saved.absender || "" };
+  return { ...d, ...saved, kosten: { ...d.kosten, ...(saved.kosten || {}) }, modelGroups: saved.modelGroups || {}, modelSettings: saved.modelSettings || {}, absender: saved.absender || "" };
+}
+
+// Einstellungen eines Ordners: eigene Werte, sonst die Startwerte (DEFAULT_SETTINGS)
+export function folderSettings(settings, key) {
+  const o = settings.modelSettings?.[key];
+  const d = structuredClone(DEFAULT_SETTINGS);
+  const base = {
+    kosten: { ...d.kosten, ...(settings.kosten || {}) },
+    wunschgewinn: settings.wunschgewinn ?? d.wunschgewinn,
+    massnahmen: settings.massnahmen || d.massnahmen,
+    zustand: settings.zustand || d.zustand,
+  };
+  return { ...settings, ...base, ...(o || {}), kosten: { ...base.kosten, ...(o?.kosten || {}) } };
 }
 
 export const sumKosten = (s) => Object.values(s.kosten).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -220,10 +234,11 @@ export function buildFolders(inserate, settings) {
       const saved = settings.modelGroups?.[f.key];
       const auto = !(saved && saved.length);
       const groups = auto ? suggestGroups(f.items) : saved;
-      const evals = evaluateGroups(f.items, { ...settings, groups });
+      const fs = folderSettings(settings, f.key);
+      const evals = evaluateGroups(f.items, { ...fs, groups });
       const active = f.items.filter((i) => !i.ausschliessen);
       const best = [...evals].filter((e) => !e.empty).sort((a, b) => b.punkte - a.punkte || b.maxEK - a.maxEK)[0] || null;
-      return { key: f.key, label, items: f.items, active, groups, auto, evals, best, n: f.items.length };
+      return { key: f.key, label, items: f.items, active, groups, auto, evals, best, n: f.items.length, s: fs, eigene: !!settings.modelSettings?.[f.key] };
     })
     .sort((a, b) => b.n - a.n);
 }
@@ -262,4 +277,21 @@ export function topCandidates(folder, s, max = 12) {
   });
   out.sort((a, b) => a._s - b._s || a._rank - b._rank || b._gewinn - a._gewinn);
   return out.slice(0, max).map(({ _s, _rank, _gewinn, ...rest }) => rest);
+}
+
+// Alle aktiven Inserate eines Ordners, sortiert nach Preis-Leistung (beste zuerst):
+// erwartete Rendite beim Angebotspreis = (Verkaufspreis - Kosten - Preis) / Preis.
+export function rankInserate(folder) {
+  const rows = [];
+  folder.items.forEach((i) => {
+    if (i.ausschliessen) return;
+    const preis = Number(i.preis);
+    if (!(preis > 0)) return;
+    const g = findGroup(i.baujahr, i.km, folder.groups);
+    const ev = g && folder.evals.find((e) => e.group.id === g.id);
+    if (!ev || ev.empty) { rows.push({ item: i, gewinn: null, rendite: -Infinity }); return; }
+    const gewinn = ev.vk - ev.kosten - preis;
+    rows.push({ item: i, gewinn, rendite: gewinn / preis });
+  });
+  return rows.sort((a, b) => b.rendite - a.rendite || Number(a.item.preis) - Number(b.item.preis));
 }
