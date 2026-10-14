@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
   DEFAULT_SETTINGS, mergeSettings, dealCheck, suggestGroups, sumKosten, groupLabel, eur,
-  buildFolders, folderInfo, findGroup, topCandidates,
+  buildFolders, folderInfo, findGroup, topCandidates, rankInserate,
 } from "./logic.js";
 import {
   loadInserate, insertInserate, patchInserat, patchMany, deleteInserat, deleteAllInserate, loadSettings, saveSettings,
@@ -286,18 +286,28 @@ export default function App() {
 /* ---------- Deal-Check ---------- */
 function DealTab({ settings, folders, code, setError, goto }) {
   const [folderKey, setFolderKey] = useState("");
+  const [inseratId, setInseratId] = useState("");
   const [f, setF] = useState({ bj: "", km: "", preis: "" });
   const [ms, setMs] = useState([]);
   const [zs, setZs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const toggle = (arr, set, id) => set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
-  const folder = folders.find((x) => x.key === folderKey) || folders[0] || null;
+  const folder = folders.find((x) => x.key === folderKey) || null;
+  const fs = folder?.s || settings;
+  const ranked = useMemo(() => (folder ? rankInserate(folder) : []), [folder]);
+  function pickFolder(key) { setFolderKey(key); setInseratId(""); setF({ bj: "", km: "", preis: "" }); setMs([]); setZs([]); }
+  function pickInserat(id) {
+    setInseratId(id);
+    const row = ranked.find((x) => String(x.item.id) === String(id));
+    if (row) setF({ bj: row.item.baujahr ?? "", km: row.item.km ?? "", preis: row.item.preis ?? "" });
+  }
 
   const r = useMemo(() => {
-    if (!folder) return { status: "ZU_WENIG_DATEN", headline: "Noch keine Marktdaten vorhanden.", hint: "Lies zuerst Inserate ein (Screenshot oder von Hand), dann kann der Markt bewertet werden." };
-    return dealCheck({ ...f, massnahmen: ms, zustand: zs }, folder.evals, { ...settings, groups: folder.groups });
-  }, [f, ms, zs, folder, settings]);
+    if (!folders.length) return { status: "ZU_WENIG_DATEN", headline: "Noch keine Marktdaten vorhanden.", hint: "Lies zuerst Inserate ein (Screenshot oder von Hand), dann kann der Markt bewertet werden." };
+    if (!folder) return { status: "EINGABE", headline: "Wähle zuerst ein Modell aus.", hint: "Danach kannst du ein Inserat auswählen, oder du trägst die Werte von Hand ein." };
+    return dealCheck({ ...f, massnahmen: ms, zustand: zs }, folder.evals, { ...folder.s, groups: folder.groups });
+  }, [f, ms, zs, folder, folders.length]);
   const st = STATUS[r.status] || GRAY;
 
   async function fromScreenshots(fileList) {
@@ -313,7 +323,7 @@ function DealTab({ settings, folders, code, setError, goto }) {
       setF({ bj: l.baujahr ?? "", km: l.km ?? "", preis: l.preis ?? "" });
       const info = folderInfo(l);
       const hit = folders.find((x) => x.key === info.key);
-      if (hit) { setFolderKey(hit.key); setNote(`Erkannt: ${l.modell || info.label}. Ordner „${hit.label}“ gewählt. Bitte die Werte kurz prüfen.`); }
+      if (hit) { setFolderKey(hit.key); setInseratId(""); setNote(`Erkannt: ${l.modell || info.label}. Ordner „${hit.label}“ gewählt. Bitte die Werte kurz prüfen.`); }
       else setNote(`Erkannt: ${l.modell || info.label}. Für dieses Modell gibt es noch keinen Ordner. Wähle unten ein anderes Modell oder lies zuerst Inserate dieses Modells ein.`);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -330,8 +340,21 @@ function DealTab({ settings, folders, code, setError, goto }) {
         {note && <div style={{ fontSize: 12, color: C.mute, marginBottom: 10 }}>{note}</div>}
         {folders.length > 0 && (
           <Field label="Modell">
-            <select value={folder?.key || ""} onChange={(e) => setFolderKey(e.target.value)} style={inputStyle}>
+            <select value={folder?.key || ""} onChange={(e) => pickFolder(e.target.value)} style={inputStyle}>
+              <option value="">Auswählen</option>
               {folders.map((x) => <option key={x.key} value={x.key}>{x.label} ({x.active.length} Inserate)</option>)}
+            </select>
+          </Field>
+        )}
+        {folder && ranked.length > 0 && (
+          <Field label="Inserat" hint="Sortiert nach Preis-Leistung, das beste zuerst. ⭐ = die 10 besten. „Gewinn“ gilt beim Angebotspreis, ohne Maßnahmen.">
+            <select value={inseratId} onChange={(e) => pickInserat(e.target.value)} style={inputStyle}>
+              <option value="">Auswählen</option>
+              {ranked.map((r, idx) => (
+                <option key={r.item.id} value={r.item.id}>
+                  {idx < 10 && r.gewinn !== null ? "⭐ " : "• "}{eur(r.item.preis)} · Bj {r.item.baujahr} · {r.item.km?.toLocaleString("de-DE")} km{r.gewinn !== null ? ` · Gewinn ${r.gewinn >= 0 ? "+" : ""}${eur(r.gewinn)}` : " · keine Gruppe"}
+                </option>
+              ))}
             </select>
           </Field>
         )}
@@ -372,7 +395,7 @@ function DealTab({ settings, folders, code, setError, goto }) {
           <Row k="3. Danach inserieren für" v={eur(r.inserierenFuer)} bold />
           <Row k="4. Realistisch erzielst du" v={eur(r.vk)} />
           <Row k="5. Nicht verkaufen unter (Gewinn 0 €)" v={eur(r.breakEven)} />
-          <Row k="Erwarteter Gewinn beim Angebotspreis" v={`${eur(r.gewinn)}${r.rendite !== null ? ` (${(r.rendite * 100).toFixed(0)} %)` : ""}`} bold color={r.gewinn >= settings.wunschgewinn ? "#15803d" : r.gewinn >= 0 ? "#b45309" : "#b91c1c"} />
+          <Row k="Erwarteter Gewinn beim Angebotspreis" v={`${eur(r.gewinn)}${r.rendite !== null ? ` (${(r.rendite * 100).toFixed(0)} %)` : ""}`} bold color={r.gewinn >= fs.wunschgewinn ? "#15803d" : r.gewinn >= 0 ? "#b45309" : "#b91c1c"} />
           <div style={{ fontSize: 11, color: C.soft, marginTop: 8, lineHeight: 1.5 }}>
             Das erste Angebot liegt {Math.round(settings.startabschlag * 100)} % unter deiner Obergrenze, damit du Verhandlungsraum hast. Beim Inserieren ist der Verhandlungsabschlag von {Math.round(settings.abschlag * 100)} % schon eingerechnet.
           </div>
@@ -382,7 +405,7 @@ function DealTab({ settings, folders, code, setError, goto }) {
       {STATUS[r.status] && (
         <Berater
           title="KI-Berater zu diesem Deal"
-          getContext={() => dealContext(r, f, ms, zs, settings, folder)}
+          getContext={() => dealContext(r, f, ms, zs, fs, folder)}
           placeholder="Optional: Deine Frage, z. B. „Wie verhandle ich am besten?“"
           buttonLabel="Diesen Deal beraten lassen"
           code={code}
@@ -392,7 +415,8 @@ function DealTab({ settings, folders, code, setError, goto }) {
 
       <div style={card}>
         <div style={h}>2 · Was machst du selbst am Auto?</div>
-        {settings.massnahmen.map((m) => {
+        {folder && <div style={{ fontSize: 11.5, color: C.soft, marginTop: -4, marginBottom: 8 }}>Werte aus dem Ordner „{folder.label}“ (dort änderbar)</div>}
+        {fs.massnahmen.map((m) => {
           const netto = m.effekt - m.kosten;
           return (
             <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}>
@@ -406,7 +430,7 @@ function DealTab({ settings, folders, code, setError, goto }) {
 
       <div style={card}>
         <div style={h}>3 · Zustand und Ausstattung</div>
-        {settings.zustand.map((z) => (
+        {fs.zustand.map((z) => (
           <label key={z.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}>
             <input type="checkbox" checked={zs.includes(z.id)} onChange={() => toggle(zs, setZs, z.id)} style={{ width: 20, height: 20 }} />
             <span style={{ flex: 1, fontSize: 14 }}>{z.name}</span>
@@ -482,6 +506,7 @@ function FolderView({ folder, settings, setSettings, setInserate, actions, code,
   const [pickNote, setPickNote] = useState("");
   const [cands, setCands] = useState([]);
   const [openGroup, setOpenGroup] = useState(null);
+  const S = folder.s;
 
   const act = folder.active;
   const prices = act.map((i) => Number(i.preis)).filter(Number.isFinite);
@@ -491,19 +516,19 @@ function FolderView({ folder, settings, setSettings, setInserate, actions, code,
 
   async function explain() {
     setBusy1(true); setErkl("");
-    try { setErkl(await askBerater(folderContext(folder, settings), "", code)); }
+    try { setErkl(await askBerater(folderContext(folder, S), "", code)); }
     catch (e) { setError(e.message); }
     finally { setBusy1(false); }
   }
   async function findTop5() {
     setBusy2(true); setPicks(null); setPickNote("");
     try {
-      const c = topCandidates(folder, settings, 12);
+      const c = topCandidates(folder, S, 12);
       if (!c.length) { setPickNote("Aktuell passt kein Inserat: Selbst mit realistischem Verhandeln (bis etwa 28 % unter dem Angebotspreis) erreichst du bei keinem deinen Wunschgewinn. Das liegt an den Marktzahlen oder an den Kosten und dem Wunschgewinn in den Einstellungen. Lies mehr Inserate ein oder prüfe die Einstellungen."); return; }
       setCands(c);
       const res = await askTop5({
-        art: "top5", modell: folder.label, absender: settings.absender || "",
-        einstellungen: { verhandlungsabschlagProzent: Math.round(settings.abschlag * 100), kostenProAuto: sumKosten(settings), wunschgewinn: settings.wunschgewinn },
+        art: "top5", modell: folder.label, absender: S.absender || "",
+        einstellungen: { verhandlungsabschlagProzent: Math.round(S.abschlag * 100), kostenProAuto: sumKosten(S), wunschgewinn: S.wunschgewinn },
         kandidaten: c,
       }, code);
       const valid = res.filter((p) => c.some((x) => x.id === p.id));
@@ -660,6 +685,9 @@ function FolderView({ folder, settings, setSettings, setInserate, actions, code,
           </div>
         </div>
       </details>
+
+      {/* Einstellungen dieses Ordners */}
+      <FolderSettings folder={folder} settings={settings} setSettings={setSettings} />
 
       {/* Inserate */}
       <div style={card}>
@@ -862,6 +890,71 @@ function InserateTab({ inserate, setInserate, actions, code, saveCode, setError 
   );
 }
 
+const WUNSCH_INFO = "Der Gewinn, den du mit jedem Auto dieses Modells mindestens machen willst. Er wird beim höchsten Einkaufspreis schon abgezogen.\nBeispiel: Verkauf 3.720 €, Kosten 780 €, Wunschgewinn 500 € → du darfst höchstens 2.440 € zahlen.";
+/* ---------- Einstellungen je Ordner ---------- */
+function FolderSettings({ folder, settings, setSettings }) {
+  const S = folder.s;
+  const mini = { ...inputStyle, padding: "8px 8px", fontSize: 13 };
+  const nextId = (prefix) => prefix + (Date.now() % 1e9);
+  const save = (patch) => {
+    const cur = { kosten: S.kosten, wunschgewinn: S.wunschgewinn, massnahmen: S.massnahmen, zustand: S.zustand };
+    setSettings({ ...settings, modelSettings: { ...settings.modelSettings, [folder.key]: { ...cur, ...patch } } });
+  };
+  const setK = (k, v) => save({ kosten: { ...S.kosten, [k]: v === "" ? 0 : v } });
+  const upd = (key, id, patch) => save({ [key]: S[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) });
+  const del = (key, id) => save({ [key]: S[key].filter((x) => x.id !== id) });
+  const reset = () => {
+    if (!confirm(`Einstellungen für „${folder.label}“ auf die Startwerte zurücksetzen?`)) return;
+    const m = { ...settings.modelSettings }; delete m[folder.key];
+    setSettings({ ...settings, modelSettings: m });
+  };
+  const other = (settings.modelSettings && Object.keys(settings.modelSettings).filter((k) => k !== folder.key)) || [];
+  return (
+    <details style={card}>
+      <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 14 }}>⚙️ Einstellungen für {folder.label} {folder.eigene ? "· angepasst" : "· Startwerte"}</summary>
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: C.mute, lineHeight: 1.5, marginBottom: 12 }}>
+          Diese Werte gelten nur für „{folder.label}“. Jeder Ordner hat seine eigenen Kosten, Maßnahmen und Zustandspunkte. Änderungen werden automatisch gespeichert und fließen in alle Berechnungen dieses Modells ein.
+        </div>
+        <div style={h}>Kosten pro Fahrzeug</div>
+        {[["aufbereitung", "Aufbereitung"], ["tuev", "TÜV/HU und Kleinreparaturen"], ["inserat", "Inseratskosten"], ["gewaehrleistung", "Gewährleistungsrücklage"], ["sonstiges", "Sonstiges (Transport, Zulassung)"]].map(([k, l]) => (
+          <Field key={k} info={KOSTEN_INFO[k]} label={`${l} (€)`}><Num value={S.kosten[k]} onChange={(v) => setK(k, v)} /></Field>
+        ))}
+        <Row k="Summe Kosten pro Auto" v={eur(sumKosten(S))} bold />
+        <div style={{ height: 12 }} />
+        <Field info={WUNSCH_INFO} label="Wunschgewinn pro Auto (€)"><Num value={S.wunschgewinn} onChange={(v) => save({ wunschgewinn: v === "" ? 0 : v })} /></Field>
+
+        <div style={{ ...h, marginTop: 18 }}>Maßnahmen (Kosten und Mehrwert)</div>
+        {S.massnahmen.map((m) => (
+          <div key={m.id} style={{ marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginBottom: 6 }}>
+              <input style={mini} value={m.name} onChange={(e) => upd("massnahmen", m.id, { name: e.target.value })} />
+              <button style={{ ...btn(false), padding: "7px 9px" }} onClick={() => del("massnahmen", m.id)}>🗑️</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              <input style={mini} type="number" value={m.kosten} onChange={(e) => upd("massnahmen", m.id, { kosten: +e.target.value })} placeholder="Kosten €" />
+              <input style={mini} type="number" value={m.effekt} onChange={(e) => upd("massnahmen", m.id, { effekt: +e.target.value })} placeholder="Mehrwert €" />
+            </div>
+          </div>
+        ))}
+        <button style={btn(false)} onClick={() => save({ massnahmen: [...S.massnahmen, { id: nextId("m"), name: "Neue Maßnahme", kosten: 0, effekt: 0 }] })}>+ Maßnahme</button>
+
+        <div style={{ ...h, marginTop: 18 }}>Zustand und Ausstattung (Preiseffekt ±)</div>
+        {S.zustand.map((z) => (
+          <div key={z.id} style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 6, marginBottom: 8 }}>
+            <input style={mini} value={z.name} onChange={(e) => upd("zustand", z.id, { name: e.target.value })} />
+            <input style={mini} type="number" value={z.effekt} onChange={(e) => upd("zustand", z.id, { effekt: +e.target.value })} />
+            <button style={{ ...btn(false), padding: "7px 9px" }} onClick={() => del("zustand", z.id)}>🗑️</button>
+          </div>
+        ))}
+        <button style={btn(false)} onClick={() => save({ zustand: [...S.zustand, { id: nextId("z"), name: "Neuer Punkt", effekt: 0 }] })}>+ Punkt</button>
+
+        {folder.eigene && <div style={{ marginTop: 16 }}><button style={{ ...btn(false), width: "100%" }} onClick={reset}>Auf Startwerte zurücksetzen</button></div>}
+      </div>
+    </details>
+  );
+}
+
 /* ---------- Einstellungen ---------- */
 const KOSTEN_INFO = {
   aufbereitung: "Innen- und Außenreinigung, Politur, Fotos – alles, was das Auto verkaufsfertig macht.\nBeispiel: 150 € → werden von jedem Verkaufspreis als Kosten abgezogen.",
@@ -873,15 +966,11 @@ const KOSTEN_INFO = {
 function SettingsTab({ settings: s, setSettings }) {
   const set = (k, v) => setSettings({ ...s, [k]: v });
   const setK = (k, v) => setSettings({ ...s, kosten: { ...s.kosten, [k]: v === "" ? 0 : v } });
-  const upd = (key, id, patch) => setSettings({ ...s, [key]: s[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) });
-  const del = (key, id) => setSettings({ ...s, [key]: s[key].filter((x) => x.id !== id) });
-  const nextId = (prefix) => prefix + (Date.now() % 1e9);
-  const mini = { ...inputStyle, padding: "8px 8px", fontSize: 13 };
 
   return (
     <div>
       <div style={{ ...card, background: "#eff6ff", borderColor: "#bfdbfe", fontSize: 13, color: "#1e3a8a", lineHeight: 1.5 }}>
-        Alle Werte sind Platzhalter. Ersetze sie durch deine Erfahrungswerte, denn die Ampel ist nur so gut wie diese Annahmen. Änderungen werden automatisch gespeichert. Die Marktgruppen (Baujahr und km) stellst du im Ordner des jeweiligen Modells unter „Markt“ ein.
+        Alle Werte sind Platzhalter. Ersetze sie durch deine Erfahrungswerte, denn die Ampel ist nur so gut wie diese Annahmen. Änderungen werden automatisch gespeichert. Kosten, Wunschgewinn, Maßnahmen, Zustand und die Marktgruppen stellst du für jedes Modell einzeln im jeweiligen Ordner unter „Markt“ ein.
       </div>
 
       <div style={card}>
@@ -894,16 +983,6 @@ function SettingsTab({ settings: s, setSettings }) {
         <Field info={"Inserate stehen meist teurer drin, als das Auto am Ende wirklich verkauft wird. Dieser Abschlag zieht das vom Marktpreis ab.\nBeispiel: Marktpreis 4.000 €, Abschlag 7 % → du rechnest mit einem Verkaufspreis von 3.720 €.\nHöher = vorsichtiger, du zahlst beim Einkauf weniger. Niedriger = optimistischer."} label="Verhandlungsabschlag auf Angebotspreise (%)" hint="Angebotspreise liegen meist über dem echten Verkaufspreis."><Num pct value={s.abschlag} onChange={(v) => set("abschlag", v)} /></Field>
         <Field info={"Nur die günstigsten Inserate einer Gruppe bestimmen den Marktpreis. Teure Mondpreise sollen den Schnitt nicht hochziehen.\nBeispiel: 10 Inserate, 40 % → die 4 günstigsten werden gemittelt.\nKleinerer Wert = vorsichtiger (niedrigerer Marktpreis)."} label="Anteil günstigster Inserate für den Marktpreis (%)" hint="Nur die günstigsten x % einer Gruppe bestimmen den Marktpreis. Mondpreise ziehen den Schnitt sonst hoch."><Num pct value={s.anteil} onChange={(v) => set("anteil", v)} /></Field>
         <Field info={"So viele Inserate braucht eine Gruppe mindestens, damit die Zahlen als verlässlich gelten.\nBeispiel: 5 → eine Gruppe mit nur 3 Inseraten wird als „zu dünn“ markiert und nicht als Attraktiv bewertet."} label="Mindestanzahl Inserate pro Gruppe"><Num value={s.minInserate} onChange={(v) => set("minInserate", v)} /></Field>
-      </div>
-
-      <div style={card}>
-        <div style={h}>Kosten pro Fahrzeug</div>
-        {[["aufbereitung", "Aufbereitung"], ["tuev", "TÜV/HU und Kleinreparaturen"], ["inserat", "Inseratskosten"], ["gewaehrleistung", "Gewährleistungsrücklage"], ["sonstiges", "Sonstiges (Transport, Zulassung)"]].map(([k, l]) => (
-          <Field key={k} info={KOSTEN_INFO[k]} label={`${l} (€)`}><Num value={s.kosten[k]} onChange={(v) => setK(k, v)} /></Field>
-        ))}
-        <Row k="Summe Kosten pro Auto" v={eur(sumKosten(s))} bold />
-        <div style={{ height: 12 }} />
-        <Field info={"Der Gewinn, den du mit jedem Auto mindestens machen willst. Er wird beim höchsten Einkaufspreis schon abgezogen.\nBeispiel: Verkauf 3.720 €, Kosten 780 €, Wunschgewinn 500 € → du darfst höchstens 2.440 € zahlen.\nJe höher der Wunsch, desto niedriger die Obergrenze."} label="Wunschgewinn pro Auto (€)"><Num value={s.wunschgewinn} onChange={(v) => set("wunschgewinn", v)} /></Field>
       </div>
 
       <div style={card}>
@@ -920,36 +999,7 @@ function SettingsTab({ settings: s, setSettings }) {
         </div>
       </div>
 
-      <div style={card}>
-        <div style={h}>Maßnahmen (Kosten und Mehrwert)</div>
-        {s.massnahmen.map((m) => (
-          <div key={m.id} style={{ marginBottom: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginBottom: 6 }}>
-              <input style={mini} value={m.name} onChange={(e) => upd("massnahmen", m.id, { name: e.target.value })} />
-              <button style={{ ...btn(false), padding: "7px 9px" }} onClick={() => del("massnahmen", m.id)}>🗑️</button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              <input style={mini} type="number" value={m.kosten} onChange={(e) => upd("massnahmen", m.id, { kosten: +e.target.value })} placeholder="Kosten €" />
-              <input style={mini} type="number" value={m.effekt} onChange={(e) => upd("massnahmen", m.id, { effekt: +e.target.value })} placeholder="Mehrwert €" />
-            </div>
-          </div>
-        ))}
-        <button style={btn(false)} onClick={() => setSettings({ ...s, massnahmen: [...s.massnahmen, { id: nextId("m"), name: "Neue Maßnahme", kosten: 0, effekt: 0 }] })}>+ Maßnahme</button>
-      </div>
-
-      <div style={card}>
-        <div style={h}>Zustand und Ausstattung (Preiseffekt ±)</div>
-        {s.zustand.map((z) => (
-          <div key={z.id} style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 6, marginBottom: 8 }}>
-            <input style={mini} value={z.name} onChange={(e) => upd("zustand", z.id, { name: e.target.value })} />
-            <input style={mini} type="number" value={z.effekt} onChange={(e) => upd("zustand", z.id, { effekt: +e.target.value })} />
-            <button style={{ ...btn(false), padding: "7px 9px" }} onClick={() => del("zustand", z.id)}>🗑️</button>
-          </div>
-        ))}
-        <button style={btn(false)} onClick={() => setSettings({ ...s, zustand: [...s.zustand, { id: nextId("z"), name: "Neuer Punkt", effekt: 0 }] })}>+ Punkt</button>
-      </div>
-
-      <button style={{ ...btn(false), width: "100%" }} onClick={() => { if (confirm("Alle Einstellungen auf die Platzhalter zurücksetzen? Gespeicherte Gruppen gehen dabei verloren.")) setSettings(structuredClone(DEFAULT_SETTINGS)); }}>Auf Platzhalter zurücksetzen</button>
+      <button style={{ ...btn(false), width: "100%" }} onClick={() => { if (confirm("Alle Einstellungen auf die Platzhalter zurücksetzen? Gespeicherte Gruppen und die Ordner-Einstellungen (Kosten, Maßnahmen, Zustand) gehen dabei verloren.")) setSettings(structuredClone(DEFAULT_SETTINGS)); }}>Auf Platzhalter zurücksetzen</button>
     </div>
   );
 }
